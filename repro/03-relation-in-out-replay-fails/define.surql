@@ -1,0 +1,9 @@
+DEFINE TABLE track TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE artist TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE performed TYPE RELATION IN track OUT artist SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD role ON performed TYPE option<string>;
+
+RETURN {
+  table_def: (INFO FOR DB).tables.performed,
+  fields:    (INFO FOR TABLE performed).fields
+};
