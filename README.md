@@ -42,3 +42,30 @@ Earth and Cloud API scripts (`08`–`17`) do not run anything remotely unless `E
 | 16 | Personal access token docs say non-GET routes are refused, and missing scopes return an opaque `403 Insufficient scopes` | Docs | Low | observed on Earth (engine 4.0.0), Nov 2026 | [issue](issues/16-pat-docs-and-opaque-403-scopes.md) · [repro](repro/16-pat-docs-and-opaque-403-scopes/run.sh) |
 | 17 | Earth runs `surrealdb-4.0.0` behind `4.0.1`, and engine upgrades aren't announced in advance | Earth | Medium | observed on Earth (engine 4.0.0), Nov 2026 | [issue](issues/17-earth-engine-version-lag-and-notice.md) · [repro](repro/17-earth-engine-version-lag-and-notice/run.sh) |
 | 18 | Redefining a computed view also wipes its indexes *(found while preparing this repo)* | Engine | Medium | reproduced locally (4.0.1) | [issue](issues/18-view-overwrite-wipes-indexes.md) · [repro](repro/18-view-overwrite-wipes-indexes/run.sh) |
+
+## SurrealDB's response (Drew, Earth engineering, November 2026)
+
+| # | Response | Our follow-up |
+| --- | --- | --- |
+| 01, 02, 18 | Confirmed: redefining a computed view drops its events and indexes, and events on GROUP BY views get no id. For now, put events only on normal tables, and re-run a view's `DEFINE INDEX` after changing it. | Done: no platform events on views (#750). Re-defining view indexes after a change is still to do. |
+| 03 | Use `DEFINE FIELD OVERWRITE` when replaying INFO. | Already our workaround. |
+| 04 | `OPTION IMPORT` skips DEFAULT and VALUE: set them explicitly. | Upgrade copy and guidance (#844). |
+| 05 | Write `owner = $auth`, not `owner = $auth.id`. The first uses the index, including inside PERMISSIONS. | Presets (#826), guidance (#844). |
+| 06 | Use plain `UNIQUE` when duplicates may exist (it fails up front). | Guidance (#844). |
+| 07 | Files apply alphabetically: put a view after its source, or below it in the same file. | Platform check (#827). |
+| 08 | The Free allowance is per organisation. Pro bills overage and disables nothing. Per-cluster caps and alerts are in progress. | Waiting on SurrealDB. |
+| 09 | A disabled cluster can't be changed or deleted until the org is back under its allowance. Being investigated. | Waiting on SurrealDB. |
+| 10 | Prefer set-based SQL: `INSERT RELATION INTO edge [{ in, out }, ...]` instead of FOR loops of RELATE, and keep batches modest. The executor's memory limit will matter less over time. | Upgrade copy and guidance (#844). |
+| 11 | `committed_unanswered` means the commit went through: don't retry automatically. Use deterministic ids with UPSERT. An idempotency key is tracked as a request. | Upgrade copy follows this. |
+| 12 | Custom domains for instances aren't supported yet and are tracked. The same-origin relay is a good workaround. | Relay in place (#717). |
+| 13 | Set a `User-Agent` on server-side clients. | Done. |
+| 14 | When `resources` is omitted, the API now defaults to 100 replicas. Replicas aren't billed individually: billing is request units, active executor time, live notifications, connection time and storage. | Done (#732). |
+| 15 | Usage closes hourly plus a settle window, so it runs about 2 h behind. Per-cluster usage returns 404 after deletion, but org-level usage still includes deleted clusters. Live notifications are billed. | Reconcile at org level. |
+| 16 | The 403 doesn't name the missing scope, and the per-route scopes aren't documented. Being looked into. | Waiting on SurrealDB. |
+| 17 | Earth reports 4.0.0, and comparing major.minor is fine. No breaking changes without a lot of notice, and probably opt-in. | Pin the scratch engine to Earth's version (#841). |
+
+Architecture suggestions from the same review:
+- **Apply from outside the container:** keep the apply credential out of the container, or make it very short-lived (#843).
+- **ASYNC outbox:** make the outbox event `ASYNC` with `RETRY`, install it only where an automation needs it, and prune the outbox (#840).
+- **Revocation:** an `AUTHENTICATE` membership lookup can revoke access within the 15-minute token window (#842).
+- **Lock expiry:** give the lock an owner and an expiry. We already have both: the lock records its run and becomes stale after the apply deadline.
